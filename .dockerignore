@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.git/
+.agent_files/
+*.md
+.telegram_offset

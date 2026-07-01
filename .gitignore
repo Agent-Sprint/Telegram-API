@@ -1,0 +1,44 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Environment/secret files
+.env
+.env.*
+*.env
+
+# pytest artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# Docker artifacts (optional local overrides)
+docker-compose.override.yml
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Agent working files
+.agent_files/
