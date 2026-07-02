@@ -4,7 +4,8 @@ All Telegram API calls are mocked so the tests run without a real bot token.
 """
 
 import os
-from unittest.mock import AsyncMock, patch
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +13,11 @@ from telegram.error import TelegramError
 
 
 os.environ["TELEGRAM_BOT_TOKEN"] = "fake-token-for-tests"
+
+# Stub out the 'whisper' module before any project imports so tests run
+# without openai-whisper installed locally (it lives in the Docker image).
+_whisper_stub = MagicMock()
+sys.modules.setdefault("whisper", _whisper_stub)
 
 
 # Patch the Bot class before importing the FastAPI app, because the
@@ -36,6 +42,7 @@ def _fake_update(update_id: int, chat_id: int, text: str = "Hi"):
     update.update_id = update_id
     update.effective_chat = AsyncMock(id=chat_id)
     update.message = AsyncMock(text=text)
+    update.message.voice = None  # explicitly not a voice message
     return update
 
 
@@ -148,3 +155,271 @@ def test_error_handling():
         )
     assert response.status_code == 500
     assert "Telegram API failure" in response.json()["detail"]
+
+
+# ============================================================================
+# Tests for transcribe_voice function
+# ============================================================================
+
+import asyncio
+from telegram_api.utils import transcribe_voice
+
+
+def _fake_voice(file_id: str = "test_file_id"):
+    """Create a fake voice object with a file_id."""
+    voice = MagicMock()
+    voice.file_id = file_id
+    return voice
+
+
+def test_transcribe_voice_happy_path():
+    """Test successful voice transcription."""
+    async def _test():
+        voice = _fake_voice("voice_123")
+        bot = AsyncMock()
+
+        # Mock the file object returned by bot.get_file
+        tg_file = AsyncMock()
+        tg_file.download_to_drive = AsyncMock()
+        bot.get_file = AsyncMock(return_value=tg_file)
+
+        # Mock whisper model
+        mock_model = MagicMock()
+        mock_model.transcribe = MagicMock(return_value={"text": "  Hello world  "})
+
+        with patch("telegram_api.utils.whisper") as mock_whisper, \
+             patch("telegram_api.utils.os.path.exists", return_value=True), \
+             patch("telegram_api.utils.os.remove") as mock_remove:
+            mock_whisper.load_model = MagicMock(return_value=mock_model)
+
+            result = await transcribe_voice(voice, bot)
+
+            # Verify the result is stripped
+            assert result == "Hello world"
+
+            # Verify the flow was called correctly
+            bot.get_file.assert_awaited_once_with("voice_123")
+            tg_file.download_to_drive.assert_awaited_once()
+            mock_whisper.load_model.assert_called_once_with("base", device="cpu")
+            mock_model.transcribe.assert_called_once()
+            mock_remove.assert_called_once()
+
+    asyncio.run(_test())
+
+
+def test_transcribe_voice_transcription_failure():
+    """Test transcription failure when whisper.load_model raises exception."""
+    async def _test():
+        voice = _fake_voice("voice_456")
+        bot = AsyncMock()
+
+        # Mock the file object
+        tg_file = AsyncMock()
+        tg_file.download_to_drive = AsyncMock()
+        bot.get_file = AsyncMock(return_value=tg_file)
+
+        with patch("telegram_api.utils.whisper") as mock_whisper, \
+             patch("telegram_api.utils.os.path.exists", return_value=True), \
+             patch("telegram_api.utils.os.remove") as mock_remove:
+            mock_whisper.load_model = MagicMock(side_effect=Exception("Whisper error"))
+
+            result = await transcribe_voice(voice, bot)
+
+            # Verify it returns failure message without raising
+            assert result == "transcription failed"
+
+            # Verify cleanup still happens
+            mock_remove.assert_called_once()
+
+    asyncio.run(_test())
+
+
+def test_transcribe_voice_download_failure():
+    """Test transcription failure when bot.get_file raises exception."""
+    async def _test():
+        voice = _fake_voice("voice_789")
+        bot = AsyncMock()
+
+        bot.get_file = AsyncMock(side_effect=Exception("Download error"))
+
+        with patch("telegram_api.utils.whisper") as mock_whisper, \
+             patch("telegram_api.utils.os.path.exists", return_value=False), \
+             patch("telegram_api.utils.os.remove") as mock_remove:
+            mock_whisper.load_model = MagicMock()
+
+            result = await transcribe_voice(voice, bot)
+
+            # Verify it returns failure message without raising
+            assert result == "transcription failed"
+
+            # Verify cleanup is NOT called when file doesn't exist
+            mock_remove.assert_not_called()
+
+    asyncio.run(_test())
+
+
+def test_transcribe_voice_file_cleanup_on_success():
+    """Test that os.remove is called when file exists on success."""
+    async def _test():
+        voice = _fake_voice("voice_cleanup")
+        bot = AsyncMock()
+
+        tg_file = AsyncMock()
+        tg_file.download_to_drive = AsyncMock()
+        bot.get_file = AsyncMock(return_value=tg_file)
+
+        mock_model = MagicMock()
+        mock_model.transcribe = MagicMock(return_value={"text": "Test"})
+
+        with patch("telegram_api.utils.whisper") as mock_whisper, \
+             patch("telegram_api.utils.os.path.exists", return_value=True), \
+             patch("telegram_api.utils.os.remove") as mock_remove:
+            mock_whisper.load_model = MagicMock(return_value=mock_model)
+
+            result = await transcribe_voice(voice, bot)
+
+            assert result == "Test"
+            mock_remove.assert_called_once_with("/tmp/voice_voice_cleanup.ogg")
+
+    asyncio.run(_test())
+
+
+def test_transcribe_voice_file_cleanup_on_failure():
+    """Test that os.remove is called when file exists on failure."""
+    async def _test():
+        voice = _fake_voice("voice_fail")
+        bot = AsyncMock()
+
+        tg_file = AsyncMock()
+        tg_file.download_to_drive = AsyncMock()
+        bot.get_file = AsyncMock(return_value=tg_file)
+
+        with patch("telegram_api.utils.whisper") as mock_whisper, \
+             patch("telegram_api.utils.os.path.exists", return_value=True), \
+             patch("telegram_api.utils.os.remove") as mock_remove:
+            mock_whisper.load_model = MagicMock(side_effect=Exception("Model error"))
+
+            result = await transcribe_voice(voice, bot)
+
+            assert result == "transcription failed"
+            mock_remove.assert_called_once_with("/tmp/voice_voice_fail.ogg")
+
+    asyncio.run(_test())
+
+
+def test_transcribe_voice_no_cleanup_when_file_missing():
+    """Test that os.remove is NOT called when file doesn't exist."""
+    async def _test():
+        voice = _fake_voice("voice_missing")
+        bot = AsyncMock()
+
+        bot.get_file = AsyncMock(side_effect=Exception("Download failed"))
+
+        with patch("telegram_api.utils.whisper") as mock_whisper, \
+             patch("telegram_api.utils.os.path.exists", return_value=False), \
+             patch("telegram_api.utils.os.remove") as mock_remove:
+            mock_whisper.load_model = MagicMock()
+
+            result = await transcribe_voice(voice, bot)
+
+            assert result == "transcription failed"
+            mock_remove.assert_not_called()
+
+    asyncio.run(_test())
+
+
+# ============================================================================
+# Endpoint-level voice message tests
+# ============================================================================
+
+def _fake_voice_update(update_id: int, chat_id: int, file_id: str = "voice_file_id"):
+    """Create a fake update with a voice message (no text)."""
+    update = AsyncMock()
+    update.update_id = update_id
+    update.effective_chat = AsyncMock(id=chat_id)
+    update.message = AsyncMock(spec=[])  # no auto-attributes
+    update.message.text = None
+    update.message.voice = AsyncMock()
+    update.message.voice.file_id = file_id
+    return update
+
+
+def test_get_updates_voice_message():
+    """Test that voice messages are transcribed and returned as text."""
+    voice_update = _fake_voice_update(1, 123456789, "file_001")
+    with patch("telegram_api.utils.TelegramClient.get_updates") as mock_get, \
+         patch("api.router.transcribe_voice", new_callable=AsyncMock) as mock_transcribe:
+        mock_get.return_value = [voice_update]
+        mock_transcribe.return_value = "hello world"
+
+        response = client.post(
+            "/api/v1/get_updates",
+            json={"chat_id": 123456789, "limit": 10},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["updates"][0]["text"] == "hello world"
+    assert data["updates"][0]["chat_id"] == 123456789
+
+
+def test_get_updates_voice_transcription_failure():
+    """Test that transcription failure returns the failure message."""
+    voice_update = _fake_voice_update(2, 123456789, "file_002")
+    with patch("telegram_api.utils.TelegramClient.get_updates") as mock_get, \
+         patch("api.router.transcribe_voice", new_callable=AsyncMock) as mock_transcribe:
+        mock_get.return_value = [voice_update]
+        mock_transcribe.return_value = "transcription failed"
+
+        response = client.post(
+            "/api/v1/get_updates",
+            json={"chat_id": 123456789, "limit": 10},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["updates"][0]["text"] == "transcription failed"
+
+
+def test_get_updates_text_message_unchanged():
+    """Test that text messages are not affected by voice transcription mocking."""
+    text_update = _fake_update(3, 123456789, "plain text message")
+    with patch("telegram_api.utils.TelegramClient.get_updates") as mock_get, \
+         patch("api.router.transcribe_voice", new_callable=AsyncMock) as mock_transcribe:
+        mock_get.return_value = [text_update]
+
+        response = client.post(
+            "/api/v1/get_updates",
+            json={"chat_id": 123456789, "limit": 10},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["updates"][0]["text"] == "plain text message"
+        mock_transcribe.assert_not_called()
+
+
+def test_get_chat_ids_voice_message():
+    """Test that get_chat_ids correctly handles mixed voice and text messages."""
+    voice_update = _fake_voice_update(1, 111, "voice_a")
+    text_update = _fake_update(2, 222, "text_b")
+    with patch("telegram_api.utils.TelegramClient.get_updates") as mock_get, \
+         patch("api.router.transcribe_voice", new_callable=AsyncMock) as mock_transcribe:
+        mock_get.return_value = [voice_update, text_update]
+        mock_transcribe.return_value = "voice transcript"
+
+        response = client.get("/api/v1/get_chat_ids?limit=10")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert len(data["chat_ids"]) == 2
+
+    # Find the entry for chat_id 111 (voice message)
+    voice_entry = next(entry for entry in data["chat_ids"] if entry["chat_id"] == 111)
+    assert voice_entry["text"] == "voice transcript"
+
+    # Find the entry for chat_id 222 (text message)
+    text_entry = next(entry for entry in data["chat_ids"] if entry["chat_id"] == 222)
+    assert text_entry["text"] == "text_b"

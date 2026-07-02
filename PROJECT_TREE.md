@@ -5,22 +5,6 @@
 api/
 ├── __init__.py [x]
 ├── main.py [x]
-│   ├── function startup_event() [x]
-│   │   ├── Functionality:
-│   │   │   - Initialize global TelegramClient instance from TELEGRAM_BOT_TOKEN env var
-│   │   │   - Handle missing token gracefully
-│   │   ├── Input:
-│   │   │   - None (reads from environment)
-│   │   └── Output:
-│   │       - None
-│   │       - Raises ValueError if token is missing
-│   ├── function shutdown_event() [x]
-│   │   ├── Functionality:
-│   │   │   - Call client.shutdown() to clean up bot session
-│   │   ├── Input:
-│   │   │   - None
-│   │   └── Output:
-│   │       - None
 │   ├── function health_check() [x]
 │   │   ├── Functionality:
 │   │   │   - Return service status for health check
@@ -28,51 +12,13 @@ api/
 │   │   │   - None
 │   │   └── Output:
 │   │       - dict with status information
-│   ├── function send_message() [x]
-│   │   ├── Functionality:
-│   │   │   - Accept SendMessageRequest and call TelegramClient.send_message
-│   │   │   - Wrap in try/except for error handling
-│   │   │   - Return appropriate success/error responses
-│   │   ├── Input:
-│   │   │   - request: SendMessageRequest
-│   │   └── Output:
-│   │       - MessageResponse
-│   ├── function send_reply_keyboard() [x]
-│   │   ├── Functionality:
-│   │   │   - Accept SendReplyKeyboardRequest and call TelegramClient.send_reply_keyboard
-│   │   │   - Wrap in try/except for error handling
-│   │   │   - Return appropriate success/error responses
-│   │   ├── Input:
-│   │   │   - request: SendReplyKeyboardRequest
-│   │   └── Output:
-│   │       - MessageResponse
-│   ├── function remove_reply_keyboard() [x]
-│   │   ├── Functionality:
-│   │   │   - Accept RemoveReplyKeyboardRequest and call TelegramClient.remove_reply_keyboard
-│   │   │   - Wrap in try/except for error handling
-│   │   │   - Return appropriate success/error responses
-│   │   ├── Input:
-│   │   │   - request: RemoveReplyKeyboardRequest
-│   │   └── Output:
-│   │       - MessageResponse
-│   ├── function get_chat_ids() [x]
-│   │   ├── Functionality:
-│   │   │   - Accept GetChatIdsRequest and return unique chat IDs from recent updates
-│   │   │   - Call TelegramClient.get_updates and extract chat IDs
-│   │   │   - Wrap in try/except for error handling
-│   │   ├── Input:
-│   │   │   - request: GetChatIdsRequest
-│   │   └── Output:
-│   │       - ChatIdsResponse
-│   └── function get_updates() [x]
+│   └── function lifespan() [x]
 │       ├── Functionality:
-│       │   - Accept GetUpdatesRequest and call TelegramClient.get_updates
-│       │   - Wrap in try/except for error handling
-│       │   - Return appropriate success/error responses
+│       │   - Yield control to the app and shut down the client on exit
 │       ├── Input:
-│       │   - request: GetUpdatesRequest
+│       │   - app: FastAPI
 │       └── Output:
-│           - UpdatesResponse
+│           - None
 ├── models.py [x]
 │   ├── class SendMessageRequest [x]
 │   │   ├── Functionality:
@@ -155,21 +101,52 @@ api/
 ├── router.py [x]
 │   ├── function create_router() [x]
 │   │   ├── Functionality:
-│   │   │   - Create APIRouter with prefix /api/v1
-│   │   │   - Organize all endpoints into the router
-│   │   │   - Allow future versioning
+│   │   │   - Create an APIRouter with endpoints backed by the given TelegramClient
 │   │   ├── Input:
-│   │   │   - None
+│   │   │   - client: TelegramClient
 │   │   └── Output:
 │   │       - APIRouter instance
-│   └── function include_router() [x]
+│   ├── function send_message() [x]
+│   │   ├── Functionality:
+│   │   │   - Send message endpoint
+│   │   ├── Input:
+│   │   │   - request: SendMessageRequest
+│   │   └── Output:
+│   │       - Dict[str, Any]
+│   ├── function send_reply_keyboard() [x]
+│   │   ├── Functionality:
+│   │   │   - Send reply keyboard endpoint
+│   │   ├── Input:
+│   │   │   - request: SendReplyKeyboardRequest
+│   │   └── Output:
+│   │       - Dict[str, Any]
+│   ├── function remove_reply_keyboard() [x]
+│   │   ├── Functionality:
+│   │   │   - Remove reply keyboard endpoint
+│   │   ├── Input:
+│   │   │   - request: RemoveReplyKeyboardRequest
+│   │   └── Output:
+│   │       - Dict[str, Any]
+│   ├── function get_updates() [x]
+│   │   ├── Functionality:
+│   │   │   - Get updates endpoint
+│   │   │   - Detect update.message.voice; if present, await transcribe_voice(voice, client.bot)
+│   │   │   - Fall back to update.message.text for text messages
+│   │   │   - Text is None if neither voice nor text
+│   │   ├── Input:
+│   │   │   - request: GetUpdatesRequest
+│   │   └── Output:
+│   │       - Dict[str, Any]
+│   └── function get_chat_ids() [x]
 │       ├── Functionality:
-│       │   - Include router in main FastAPI app
+│       │   - Get chat IDs endpoint
+│       │   - Detect update.message.voice; if present, await transcribe_voice(voice, client.bot)
+│       │   - Fall back to update.message.text for text messages
+│       │   - Text is None if neither voice nor text
 │       ├── Input:
-│       │   - app: FastAPI
-│       │   - router: APIRouter
+│       │   - limit: int
 │       └── Output:
-│           - None
+│           - Dict[str, Any]
 └── README.md [x]
     ├── Functionality:
     │   - Document API endpoint reference
@@ -186,7 +163,20 @@ telegram_api/
 │       - Export TelegramClient from utils
 │       - Define __all__ for package exports
 ├── utils.py [x]
-│   └── class TelegramClient
+│   ├── function transcribe_voice() [x]
+│   │   ├── Functionality:
+│   │   │   - Async helper to transcribe voice messages using OpenAI Whisper
+│   │   │   - Read WHISPER_MODEL (default "base") and WHISPER_DEVICE (default "cpu") from env
+│   │   │   - Download voice file to /tmp/voice_{file_id}.ogg
+│   │   │   - Load whisper model, transcribe, return transcript text
+│   │   │   - Delete temp file in finally block
+│   │   │   - Return "transcription failed" on any exception
+│   │   ├── Input:
+│   │   │   - voice: Voice object from Telegram update
+│   │   │   - bot: Bot instance for downloading files
+│   │   └── Output:
+│   │       - str: transcribed text or "transcription failed" on error
+│   └── class TelegramClient [x]
 │       ├── method __init__() [x]
 │       │   ├── Functionality:
 │       │   │   - Initialize TelegramClient with token from env or parameter
@@ -372,17 +362,33 @@ tests/
         └── Output:
             - None (assertion-based test)
 .dockerignore [x]
-Dockerfile [x]
+Dockerfile [*]
+├── Functionality:
+│   - Add apt-get install -y ffmpeg before pip install
+│   - ffmpeg is required for OpenAI Whisper audio processing
+├── Input:
+│   - None
+└── Output:
+    - Updated Dockerfile with ffmpeg installation
 docker-compose.yml [x]
-README.md [x]
+README.md [*]
 ├── Functionality:
 │   - Update with FastAPI and Docker instructions
 │   - Add local run instructions with uvicorn
 │   - Add Docker build and run instructions
 │   - Add API endpoint documentation with examples
 │   - Add environment variable requirements
+│   - Add WHISPER_MODEL and WHISPER_DEVICE env vars documentation
+│   - Add voice transcription feature section
 ├── Input:
 │   - None
 └── Output:
     - Updated Markdown documentation file
-requirements.txt [x]
+requirements.txt [*]
+├── Functionality:
+│   - Add openai-whisper>=20231117 dependency
+│   - Whisper is required for voice message transcription
+├── Input:
+│   - None
+└── Output:
+    - Updated requirements.txt with openai-whisper

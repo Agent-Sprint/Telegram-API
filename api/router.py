@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from telegram.error import TelegramError
 
 from telegram_api import TelegramClient
+from telegram_api.utils import transcribe_voice
 
 from .models import (
     ChatIdsResponse,
@@ -91,24 +92,26 @@ def create_router(client: TelegramClient) -> APIRouter:
                 limit=request.limit,
                 timeout=request.timeout,
             )
+            updates_list = []
+            for update in updates:
+                if update.message and update.message.voice:
+                    text = await transcribe_voice(update.message.voice, client.bot)
+                elif update.message and update.message.text:
+                    text = update.message.text
+                else:
+                    text = None
+                updates_list.append({
+                    "update_id": update.update_id,
+                    "chat_id": (
+                        update.effective_chat.id
+                        if update.effective_chat
+                        else None
+                    ),
+                    "text": text,
+                })
             return {
                 "success": True,
-                "updates": [
-                    {
-                        "update_id": update.update_id,
-                        "chat_id": (
-                            update.effective_chat.id
-                            if update.effective_chat
-                            else None
-                        ),
-                        "text": (
-                            update.message.text
-                            if update.message and update.message.text
-                            else None
-                        ),
-                    }
-                    for update in updates
-                ],
+                "updates": updates_list,
                 "error": None,
             }
         except ValueError as exc:
@@ -128,11 +131,12 @@ def create_router(client: TelegramClient) -> APIRouter:
                 chat_id = (
                     update.effective_chat.id if update.effective_chat else None
                 )
-                text = (
-                    update.message.text
-                    if update.message and update.message.text
-                    else None
-                )
+                if update.message and update.message.voice:
+                    text = await transcribe_voice(update.message.voice, client.bot)
+                elif update.message and update.message.text:
+                    text = update.message.text
+                else:
+                    text = None
                 if chat_id is not None and chat_id not in seen:
                     seen.add(chat_id)
                     chat_ids.append({"chat_id": chat_id, "text": text})
