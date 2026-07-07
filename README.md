@@ -58,6 +58,7 @@ Files to be sent via the API must be placed in the `uploads/` folder at the proj
 - Send health check: `curl http://localhost:8000/`
 - List configured bots via GET /api/v1/bots
 - Send messages via POST /api/v1/{bot_name}/send_message
+- Edit messages via POST /api/v1/{bot_name}/edit_message
 - Send reply keyboards via POST /api/v1/{bot_name}/send_reply_keyboard
 - Remove keyboards via POST /api/v1/{bot_name}/remove_reply_keyboard
 - Fetch updates (voice messages auto-transcribed) via POST /api/v1/{bot_name}/get_updates
@@ -75,6 +76,11 @@ curl http://localhost:8000/api/v1/bots
 curl -X POST http://localhost:8000/api/v1/production/send_message \
   -H "Content-Type: application/json" \
   -d '{"chat_id": 123456789, "text": "Hello from production bot"}'
+
+# Edit a message using production bot
+curl -X POST http://localhost:8000/api/v1/production/edit_message \
+  -H "Content-Type: application/json" \
+  -d '{"chat_id": 123456789, "message_id": 42, "text": "Updated text"}'
 
 # Send message using staging bot
 curl -X POST http://localhost:8000/api/v1/staging/send_message \

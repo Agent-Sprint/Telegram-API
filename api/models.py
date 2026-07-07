@@ -116,6 +116,24 @@ class SendFileRequest(BaseModel):
         return v
 
 
+class EditMessageRequest(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "chat_id": 123456789,
+                "message_id": 123,
+                "text": "Updated message text",
+                "kwargs": {"parse_mode": "Markdown"},
+            }
+        }
+    )
+
+    chat_id: int
+    message_id: int
+    text: str
+    kwargs: Optional[Dict[str, Any]] = None
+
+
 class MessageResponse(BaseModel):
     success: bool
     message_id: Optional[int] = None

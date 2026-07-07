@@ -67,6 +67,26 @@ Use this after sending a message to your bot to discover the `chat_id` you need 
   }
   ```
 
+### Edit a message
+
+- `POST /api/v1/{bot_name}/edit_message`
+- Body:
+  ```json
+  {
+    "chat_id": 123456789,
+    "message_id": 42,
+    "text": "Updated message text"
+  }
+  ```
+- Response:
+  ```json
+  {
+    "success": true,
+    "message_id": 42,
+    "error": null
+  }
+  ```
+
 ### Send a reply keyboard
 
 - `POST /api/v1/{bot_name}/send_reply_keyboard`
@@ -177,7 +197,12 @@ curl -X POST "http://localhost:8000/api/v1/${BOT_NAME}/send_message" \
   -H "Content-Type: application/json" \
   -d '{"chat_id": 123456789, "text": "Hello!"}'
 
-# 5. Send a reply keyboard
+# 5. Edit a message
+curl -X POST "http://localhost:8000/api/v1/${BOT_NAME}/edit_message" \
+  -H "Content-Type: application/json" \
+  -d '{"chat_id": 123456789, "message_id": 42, "text": "Updated text"}'
+
+# 7. Send a reply keyboard
 curl -X POST "http://localhost:8000/api/v1/${BOT_NAME}/send_reply_keyboard" \
   -H "Content-Type: application/json" \
   -d '{
@@ -186,17 +211,17 @@ curl -X POST "http://localhost:8000/api/v1/${BOT_NAME}/send_reply_keyboard" \
     "keyboard": [["Yes", "No"], ["Cancel"]]
   }'
 
-# 6. Remove a reply keyboard
+# 8. Remove a reply keyboard
 curl -X POST "http://localhost:8000/api/v1/${BOT_NAME}/remove_reply_keyboard" \
   -H "Content-Type: application/json" \
   -d '{"chat_id": 123456789, "text": "Keyboard removed."}'
 
-# 7. Get updates
+# 9. Get updates
 curl -X POST "http://localhost:8000/api/v1/${BOT_NAME}/get_updates" \
   -H "Content-Type: application/json" \
   -d '{"chat_id": 123456789, "limit": 10, "timeout": 0}'
 
-# 8. Send a file
+# 10. Send a file
 curl -X POST "http://localhost:8000/api/v1/${BOT_NAME}/send_file" \
   -H "Content-Type: application/json" \
   -d '{

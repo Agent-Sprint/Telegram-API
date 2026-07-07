@@ -11,6 +11,7 @@ from telegram_api.utils import transcribe_voice
 from .models import (
     BotsResponse,
     ChatIdsResponse,
+    EditMessageRequest,
     GetUpdatesRequest,
     MessageResponse,
     RemoveReplyKeyboardRequest,
@@ -119,6 +120,29 @@ def create_router(bot_manager: BotManager) -> APIRouter:
                 filename=request.filename,
                 caption=request.caption,
                 file_type=request.file_type,
+                **(request.kwargs or {}),
+            )
+            return {
+                "success": True,
+                "message_id": getattr(message, "message_id", None),
+                "error": None,
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except TelegramError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @router.post("/{bot_name}/edit_message", response_model=MessageResponse)
+    async def edit_message(bot_name: str, request: EditMessageRequest) -> Dict[str, Any]:
+        try:
+            client = bot_manager.get_client(bot_name)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        try:
+            message = await client.edit_message(
+                chat_id=request.chat_id,
+                message_id=request.message_id,
+                text=request.text,
                 **(request.kwargs or {}),
             )
             return {

@@ -28,6 +28,9 @@ with patch("telegram_api.utils.Bot") as _MockBot:
     _bot_instance.send_message = AsyncMock(
         return_value=AsyncMock(message_id=42)
     )
+    _bot_instance.edit_message_text = AsyncMock(
+        return_value=AsyncMock(message_id=42)
+    )
     _bot_instance.get_updates = AsyncMock(return_value=[])
     _bot_instance.shutdown = AsyncMock()
     _MockBot.return_value = _bot_instance
@@ -73,6 +76,47 @@ def test_send_message_empty_text():
     )
     assert response.status_code == 400
     assert "text" in response.json()["detail"].lower()
+
+
+def test_edit_message():
+    response = client.post(
+        "/api/v1/test/edit_message",
+        json={"chat_id": 123456789, "message_id": 123, "text": "Updated text"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["message_id"] == 42
+    assert data["error"] is None
+
+
+def test_edit_message_empty_text():
+    response = client.post(
+        "/api/v1/test/edit_message",
+        json={"chat_id": 123456789, "message_id": 123, "text": ""},
+    )
+    assert response.status_code == 400
+    assert "text" in response.json()["detail"].lower()
+
+
+def test_edit_message_invalid_bot():
+    response = client.post(
+        "/api/v1/unknown_bot/edit_message",
+        json={"chat_id": 123456789, "message_id": 123, "text": "Updated text"},
+    )
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
+def test_edit_message_telegram_error():
+    with patch("telegram_api.utils.TelegramClient.edit_message") as mock_edit:
+        mock_edit.side_effect = TelegramError("Telegram API failure")
+        response = client.post(
+            "/api/v1/test/edit_message",
+            json={"chat_id": 123456789, "message_id": 123, "text": "Updated text"},
+        )
+    assert response.status_code == 500
+    assert "Telegram API failure" in response.json()["detail"]
 
 
 def test_send_reply_keyboard():

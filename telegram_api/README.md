@@ -6,6 +6,7 @@ A small Python wrapper around the Telegram Bot API using
 ## Features
 
 - `send_message(chat_id, text)` – send a message to a chat.
+- `edit_message(chat_id, message_id, text)` – edit an existing message.
 - `send_reply_keyboard(chat_id, text, keyboard)` – send a message with a reply keyboard.
 - `remove_reply_keyboard(chat_id)` – remove the current reply keyboard from the chat.
 - `get_updates(chat_id=None)` – fetch recent updates and optionally filter by chat.
@@ -111,6 +112,16 @@ await client.send_reply_keyboard(
     chat_id=123456789,
     text="Choose an option:",
     keyboard=[["Yes", "No"], ["Cancel"]],
+)
+```
+
+Edit a message:
+
+```python
+await client.edit_message(
+    chat_id=123456789,
+    message_id=42,
+    text="Updated message text"
 )
 ```
 

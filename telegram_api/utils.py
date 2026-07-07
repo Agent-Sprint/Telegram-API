@@ -197,6 +197,27 @@ class TelegramClient:
             )
             raise
 
+    async def edit_message(
+        self, chat_id: int, message_id: int, text: str, **kwargs: Any
+    ) -> Any:
+        """Edit an existing message in ``chat_id``.
+
+        All extra keyword arguments are forwarded to ``Bot.edit_message_text``.
+        """
+        if not text:
+            raise ValueError("Message text cannot be empty.")
+
+        logger.info("Editing message %s in chat %s", message_id, chat_id)
+        try:
+            return await self.bot.edit_message_text(
+                chat_id=chat_id, message_id=message_id, text=text, **kwargs
+            )
+        except TelegramError as exc:
+            logger.error(
+                "Failed to edit message %s in chat %s: %s", message_id, chat_id, exc
+            )
+            raise
+
     async def get_updates(
         self,
         chat_id: Optional[int] = None,
