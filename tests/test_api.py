@@ -162,17 +162,17 @@ def test_get_updates():
         mock_get.return_value = updates
         response = client.post(
             "/api/v1/test/get_updates",
-            json={"chat_id": 123456789, "limit": 10},
+            json={"limit": 10},
         )
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
-    # The endpoint delegates chat filtering to TelegramClient; since we mock
-    # the class method, we get back the raw update list.
+    # The endpoint returns all updates without filtering by chat_id.
     assert len(data["updates"]) == 2
-    assert data["updates"][0]["chat_id"] == 123456789
-    assert data["updates"][0]["text"] == "msg1"
-    mock_get.assert_awaited_once_with(chat_id=123456789, limit=10, timeout=0)
+    # Verify updates from multiple chat IDs are returned
+    chat_ids = {update["chat_id"] for update in data["updates"]}
+    assert chat_ids == {123456789, 99999}
+    mock_get.assert_awaited_once_with(limit=10, timeout=0)
 
 
 def test_get_chat_ids():

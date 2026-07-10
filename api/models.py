@@ -63,14 +63,12 @@ class GetUpdatesRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "chat_id": 123456789,
                 "limit": 10,
                 "timeout": 0,
             }
         }
     )
 
-    chat_id: Optional[int] = None
     limit: int = Field(10, ge=1, le=100)
     timeout: int = Field(0, ge=0)
 

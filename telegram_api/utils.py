@@ -220,11 +220,10 @@ class TelegramClient:
 
     async def get_updates(
         self,
-        chat_id: Optional[int] = None,
         limit: int = 10,
         timeout: int = 0,
     ) -> List[Update]:
-        """Fetch recent updates and optionally filter by ``chat_id``.
+        """Fetch recent updates from all chats.
 
         The wrapper keeps track of the last processed update ID so that the same
         updates are not returned twice.
@@ -243,20 +242,7 @@ class TelegramClient:
             self._last_update_id = max(update.update_id for update in updates)
             self._save_offset()
 
-        if chat_id is not None:
-            updates = [
-                update
-                for update in updates
-                if self._match_chat(update, chat_id)
-            ]
-
         return updates
-
-    @staticmethod
-    def _match_chat(update: Update, chat_id: Optional[int]) -> bool:
-        if chat_id is None:
-            return True
-        return bool(update.effective_chat and update.effective_chat.id == int(chat_id))
 
     def _load_offset(self) -> int:
         if not self.offset_path:

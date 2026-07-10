@@ -163,7 +163,6 @@ def create_router(bot_manager: BotManager) -> APIRouter:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         try:
             updates = await client.get_updates(
-                chat_id=request.chat_id,
                 limit=request.limit,
                 timeout=request.timeout,
             )
