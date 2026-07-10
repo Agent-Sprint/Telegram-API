@@ -265,14 +265,13 @@ def test_transcribe_voice_happy_path():
         tg_file.download_to_drive = AsyncMock()
         bot.get_file = AsyncMock(return_value=tg_file)
 
-        # Mock whisper model
+        # Mock the module-level singleton model (model is loaded once at import time)
         mock_model = MagicMock()
         mock_model.transcribe = MagicMock(return_value={"text": "  Hello world  "})
 
-        with patch("telegram_api.utils.whisper") as mock_whisper, \
+        with patch("telegram_api.utils._whisper_model", mock_model), \
              patch("telegram_api.utils.os.path.exists", return_value=True), \
              patch("telegram_api.utils.os.remove") as mock_remove:
-            mock_whisper.load_model = MagicMock(return_value=mock_model)
 
             result = await transcribe_voice(voice, bot)
 
@@ -282,7 +281,6 @@ def test_transcribe_voice_happy_path():
             # Verify the flow was called correctly
             bot.get_file.assert_awaited_once_with("voice_123")
             tg_file.download_to_drive.assert_awaited_once()
-            mock_whisper.load_model.assert_called_once_with("base", device="cpu")
             mock_model.transcribe.assert_called_once()
             mock_remove.assert_called_once()
 
@@ -290,7 +288,7 @@ def test_transcribe_voice_happy_path():
 
 
 def test_transcribe_voice_transcription_failure():
-    """Test transcription failure when whisper.load_model raises exception."""
+    """Test transcription failure when the singleton model's transcribe raises."""
     async def _test():
         voice = _fake_voice("voice_456")
         bot = AsyncMock()
@@ -300,10 +298,12 @@ def test_transcribe_voice_transcription_failure():
         tg_file.download_to_drive = AsyncMock()
         bot.get_file = AsyncMock(return_value=tg_file)
 
-        with patch("telegram_api.utils.whisper") as mock_whisper, \
+        mock_model = MagicMock()
+        mock_model.transcribe = MagicMock(side_effect=Exception("Whisper error"))
+
+        with patch("telegram_api.utils._whisper_model", mock_model), \
              patch("telegram_api.utils.os.path.exists", return_value=True), \
              patch("telegram_api.utils.os.remove") as mock_remove:
-            mock_whisper.load_model = MagicMock(side_effect=Exception("Whisper error"))
 
             result = await transcribe_voice(voice, bot)
 
@@ -324,10 +324,8 @@ def test_transcribe_voice_download_failure():
 
         bot.get_file = AsyncMock(side_effect=Exception("Download error"))
 
-        with patch("telegram_api.utils.whisper") as mock_whisper, \
-             patch("telegram_api.utils.os.path.exists", return_value=False), \
+        with patch("telegram_api.utils.os.path.exists", return_value=False), \
              patch("telegram_api.utils.os.remove") as mock_remove:
-            mock_whisper.load_model = MagicMock()
 
             result = await transcribe_voice(voice, bot)
 
@@ -353,10 +351,9 @@ def test_transcribe_voice_file_cleanup_on_success():
         mock_model = MagicMock()
         mock_model.transcribe = MagicMock(return_value={"text": "Test"})
 
-        with patch("telegram_api.utils.whisper") as mock_whisper, \
+        with patch("telegram_api.utils._whisper_model", mock_model), \
              patch("telegram_api.utils.os.path.exists", return_value=True), \
              patch("telegram_api.utils.os.remove") as mock_remove:
-            mock_whisper.load_model = MagicMock(return_value=mock_model)
 
             result = await transcribe_voice(voice, bot)
 
@@ -376,10 +373,12 @@ def test_transcribe_voice_file_cleanup_on_failure():
         tg_file.download_to_drive = AsyncMock()
         bot.get_file = AsyncMock(return_value=tg_file)
 
-        with patch("telegram_api.utils.whisper") as mock_whisper, \
+        mock_model = MagicMock()
+        mock_model.transcribe = MagicMock(side_effect=Exception("Model error"))
+
+        with patch("telegram_api.utils._whisper_model", mock_model), \
              patch("telegram_api.utils.os.path.exists", return_value=True), \
              patch("telegram_api.utils.os.remove") as mock_remove:
-            mock_whisper.load_model = MagicMock(side_effect=Exception("Model error"))
 
             result = await transcribe_voice(voice, bot)
 
@@ -397,10 +396,8 @@ def test_transcribe_voice_no_cleanup_when_file_missing():
 
         bot.get_file = AsyncMock(side_effect=Exception("Download failed"))
 
-        with patch("telegram_api.utils.whisper") as mock_whisper, \
-             patch("telegram_api.utils.os.path.exists", return_value=False), \
+        with patch("telegram_api.utils.os.path.exists", return_value=False), \
              patch("telegram_api.utils.os.remove") as mock_remove:
-            mock_whisper.load_model = MagicMock()
 
             result = await transcribe_voice(voice, bot)
 

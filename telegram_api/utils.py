@@ -18,16 +18,19 @@ import whisper
 
 logger = logging.getLogger(__name__)
 
+# Load the Whisper model once at module level (singleton).
+# Device is hardcoded to CPU — GPU is never used in this service.
+_whisper_model_name = os.getenv("WHISPER_MODEL", "base")
+logger.info("Loading Whisper model '%s' on cpu", _whisper_model_name)
+_whisper_model = whisper.load_model(_whisper_model_name, device="cpu")
+
 
 async def transcribe_voice(voice: Any, bot: Any) -> str:
-    model_name = os.getenv("WHISPER_MODEL", "base")
-    device = os.getenv("WHISPER_DEVICE", "cpu")
     tmp_path = f"/tmp/voice_{voice.file_id}.ogg"
     try:
         tg_file = await bot.get_file(voice.file_id)
         await tg_file.download_to_drive(tmp_path)
-        model = whisper.load_model(model_name, device=device)
-        result = model.transcribe(str(tmp_path))
+        result = _whisper_model.transcribe(str(tmp_path))
         return result["text"].strip()
     except Exception as exc:
         logger.error("Voice transcription failed: %s", exc)

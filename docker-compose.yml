@@ -5,7 +5,6 @@ services:
     env_file: .env
     environment:
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
-      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
       - UPLOADS_PATH=${UPLOADS_PATH:-uploads}
     ports:
       - "127.0.0.1:8000:8000"

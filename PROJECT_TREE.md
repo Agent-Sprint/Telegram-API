@@ -198,12 +198,14 @@ telegram_api/
 │       - Export TelegramClient from utils
 │       - Define __all__ for package exports
 ├── utils.py [*]
-│   ├── function transcribe_voice() [x]
+│   ├── function transcribe_voice() [*]
 │   │   ├── Functionality:
 │   │   │   - Async helper to transcribe voice messages using OpenAI Whisper
-│   │   │   - Read WHISPER_MODEL (default "base") and WHISPER_DEVICE (default "cpu") from env
+│   │   │   - Read WHISPER_MODEL (default "base") from env at module load time
+│   │   │   - Load Whisper model once at module level (singleton pattern)
+│   │   │   - Hardcode device to "cpu" in model load call
 │   │   │   - Download voice file to /tmp/voice_{file_id}.ogg
-│   │   │   - Load whisper model, transcribe, return transcript text
+│   │   │   - Use pre-loaded model to transcribe, return transcript text
 │   │   │   - Delete temp file in finally block
 │   │   │   - Return "transcription failed" on any exception
 │   │   ├── Input:
@@ -429,11 +431,26 @@ Dockerfile [*]
 │   - ffmpeg is required for OpenAI Whisper audio processing
 │   - Add RUN mkdir -p /app/uploads after WORKDIR command
 │   - Add RUN chown -R appuser:appuser /app/uploads for permissions
+│   - Add build ARG WHISPER_MODEL with default value "base"
+│   - Replace single pip install with two separate RUN steps:
+│   │   - First: install CPU-only torch from PyTorch CPU wheel index
+│   │   - Second: install requirements.txt (torch already satisfied)
+│   - Add RUN step to pre-download Whisper model at build time
+│   - Fix ownership of /root/.cache/whisper so appuser can read it
+├── Input:
+│   - Build ARG WHISPER_MODEL (default: "base")
+└── Output:
+    - Updated Dockerfile with CPU-only torch and pre-baked Whisper model
+docker-compose.yml [*]
+├── Functionality:
+│   - Define service configuration for Telegram API
+│   - Remove WHISPER_DEVICE environment variable (CPU now hardcoded)
+│   - Keep WHISPER_MODEL environment variable (matches build ARG)
+│   - No named volume needed for Whisper cache (model baked into image)
 ├── Input:
 │   - None
 └── Output:
-    - Updated Dockerfile with ffmpeg installation and uploads directory
-docker-compose.yml [x]
+    - Updated docker-compose.yml without WHISPER_DEVICE
 README.md [*]
 ├── Functionality:
 │   - Update with FastAPI and Docker instructions
