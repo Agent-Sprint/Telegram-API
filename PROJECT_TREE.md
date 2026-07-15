@@ -202,6 +202,16 @@ telegram_api/
 │       - Export TelegramClient from utils
 │       - Define __all__ for package exports
 ├── utils.py [x]
+│   ├── function _split_markdownv2_safely() [x]
+│   │   ├── Functionality:
+│   │   │   - Convert Markdown to Telegram MarkdownV2 and split into chunks safely
+│   │   │   - Use telegramify_markdown.split_markdownv2 to avoid tearing entities
+│   │   │   - Fall back to _split_text_safely if conversion fails
+│   │   ├── Input:
+│   │   │   - text: str
+│   │   │   - limit: int = 4096
+│   │   └── Output:
+│   │       - List[str]: MarkdownV2-safe chunks
 │   ├── function _split_text_safely() [x]
 │   ├── function transcribe_voice() [*]
 │   │   ├── Functionality:
@@ -236,6 +246,7 @@ telegram_api/
 │       │   │   - Forward extra kwargs to Bot.send_message
 │       │   │   - Validate text is not empty
 │       │   │   - Split text exceeding 4096 chars and return split metadata
+│       │   │   - Use MarkdownV2-aware splitter so bold/italic/code entities are not torn across chunks
 │       │   ├── Input:
 │       │   │   - chat_id: int
 │       │   │   - text: str
@@ -387,6 +398,8 @@ tests/
     ├── function test_split_text_safely_over_limit() [x]
     ├── function test_split_text_safely_at_limit() [x]
     ├── function test_split_text_safely_no_safe_boundary() [x]
+    ├── function test_split_markdownv2_safely_keeps_entities_intact() [x]
+    ├── function test_send_message_long_text_splits_markdownv2_entities_safely() [x]
     ├── function test_telegram_client_send_message_long_text() [x]
     ├── function test_transcribe_voice_singleton() [ ]
     ├── function test_transcribe_voice_cpu_device() [ ]

@@ -296,3 +296,50 @@ def test_telegram_client_send_message_long_text():
 
     # Assert send_message was called 3 times (for 3 chunks)
     assert client.bot.send_message.call_count == 3
+
+
+# ============================================================================
+# Tests for MarkdownV2-aware splitting
+# ============================================================================
+
+def test_split_markdownv2_safely_keeps_entities_intact():
+    """Long MarkdownV2 text is split without breaking formatting entities."""
+    utils = _reload_utils(_get_whisper_stub())
+    prefix = "word " * 900  # ~5400 chars, pushes the bold block past the 4096 boundary
+    text = f"{prefix}\n\n**bold content**\n\n" + "end " * 100
+
+    chunks = utils._split_markdownv2_safely(text)
+
+    assert len(chunks) > 1
+    full = "".join(chunks)
+    assert "*bold content*" in full
+
+    # The complete bold span must appear in exactly one chunk, never torn.
+    hits = [chunk for chunk in chunks if "*bold content*" in chunk]
+    assert len(hits) == 1
+
+
+def test_send_message_long_text_splits_markdownv2_entities_safely():
+    """send_message splits long MarkdownV2 text without tearing entities."""
+    utils = _reload_utils(_get_whisper_stub())
+    client = _make_client(utils)
+    client.bot.send_message.side_effect = [
+        AsyncMock(message_id=1),
+        AsyncMock(message_id=2),
+    ]
+
+    prefix = "word " * 900
+    text = f"{prefix}\n\n**bold content**\n\n" + "end " * 100
+
+    result = asyncio.run(client.send_message(chat_id=1, text=text))
+
+    chunks = [call.kwargs["text"] for call in client.bot.send_message.call_args_list]
+    assert len(chunks) > 1
+
+    # The bold span should remain whole inside a single chunk.
+    hits = [chunk for chunk in chunks if "*bold content*" in chunk]
+    assert len(hits) == 1
+
+    assert isinstance(result, dict)
+    assert result["split"] is True
+    assert result["message_ids"] == [1, 2]

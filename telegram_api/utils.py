@@ -15,6 +15,7 @@ from telegram import (
 from telegram.error import TelegramError
 from telegramify_markdown import convert as md_convert
 from telegramify_markdown import entities_to_markdownv2
+from telegramify_markdown import split_markdownv2
 
 import whisper
 
@@ -94,6 +95,21 @@ def _convert_markdown(text: str) -> str:
         return text
 
 
+def _split_markdownv2_safely(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> List[str]:
+    """Convert standard Markdown to MarkdownV2 and split it safely.
+
+    Uses telegramify_markdown's split_markdownv2 so formatting entities
+    (bold, italic, code, etc.) are never torn across chunk boundaries.
+    Falls back to the plain-text splitter if the conversion fails.
+    """
+    try:
+        plain_text, entities = md_convert(text)
+        return list(split_markdownv2(plain_text, entities, max_utf16_len=limit))
+    except Exception as exc:
+        logger.warning("MarkdownV2-aware split failed: %s. Falling back to plain split.", exc)
+        return _split_text_safely(text, limit)
+
+
 class TelegramClient:
     """Thin wrapper around python-telegram-bot's Bot class.
 
@@ -130,8 +146,11 @@ class TelegramClient:
         override (e.g. ``parse_mode="HTML"`` or ``parse_mode=None``).
 
         If the text exceeds Telegram's message limit (4096 characters), it is
-        automatically split into multiple messages. In this case, a dictionary
-        is returned with the following keys:
+        automatically split into multiple messages. For the default
+        ``MarkdownV2`` parse mode, splitting is entity-aware so formatting
+        markers such as ``**bold**`` are never torn across chunk boundaries.
+
+        When split, a dictionary is returned with the following keys:
 
         - ``message_id``: the ID of the first message (for backward compatibility)
         - ``message_ids``: a list of all message IDs
@@ -144,31 +163,31 @@ class TelegramClient:
 
         send_kwargs = self._prepare_kwargs(**kwargs)
         if send_kwargs.get("parse_mode") == self.DEFAULT_PARSE_MODE:
-            text = _convert_markdown(text)
+            chunks = _split_markdownv2_safely(text, TELEGRAM_MESSAGE_LIMIT)
+        else:
+            chunks = _split_text_safely(text, TELEGRAM_MESSAGE_LIMIT)
 
-        logger.info("Sending message to chat %s", chat_id)
+        logger.info("Sending %d message chunk(s) to chat %s", len(chunks), chat_id)
         try:
-            # Check if text needs to be split
-            if len(text) <= TELEGRAM_MESSAGE_LIMIT:
-                # Send single message
+            if len(chunks) == 1:
                 return await self.bot.send_message(
-                    chat_id=chat_id, text=text, **send_kwargs
+                    chat_id=chat_id, text=chunks[0], **send_kwargs
                 )
-            else:
-                # Split text and send chunks
-                chunks = _split_text_safely(text, TELEGRAM_MESSAGE_LIMIT)
-                message_ids = []
-                for chunk in chunks:
-                    message = await self.bot.send_message(
-                        chat_id=chat_id, text=chunk, **send_kwargs
-                    )
-                    message_ids.append(message.message_id)
-                
-                return {
-                    "message_id": message_ids[0],
-                    "message_ids": message_ids,
-                    "split": True,
-                }
+
+            message_ids = []
+            for chunk in chunks:
+                if not chunk:
+                    continue
+                message = await self.bot.send_message(
+                    chat_id=chat_id, text=chunk, **send_kwargs
+                )
+                message_ids.append(message.message_id)
+
+            return {
+                "message_id": message_ids[0],
+                "message_ids": message_ids,
+                "split": True,
+            }
         except TelegramError as exc:
             logger.error("Failed to send message to chat %s: %s", chat_id, exc)
             raise
