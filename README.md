@@ -57,7 +57,7 @@ Files to be sent via the API must be placed in the `uploads/` folder at the proj
 - Access interactive Swagger UI at http://localhost:8000/docs
 - Send health check: `curl http://localhost:8000/`
 - List configured bots via GET /api/v1/bots
-- Send messages via POST /api/v1/{bot_name}/send_message
+- Send messages via POST /api/v1/{bot_name}/send_message (messages > 4096 chars are automatically split)
 - Edit messages via POST /api/v1/{bot_name}/edit_message
 - Send reply keyboards via POST /api/v1/{bot_name}/send_reply_keyboard
 - Remove keyboards via POST /api/v1/{bot_name}/remove_reply_keyboard
@@ -96,6 +96,46 @@ curl -X POST http://localhost:8000/api/v1/production/get_updates \
 curl -X POST http://localhost:8000/api/v1/production/send_file \
   -H "Content-Type: application/json" \
   -d '{"chat_id": 123456789, "filename": "document.pdf", "file_type": "document", "caption": "Here is the document"}'
+```
+
+### Long Message Splitting
+
+The `send_message` endpoint automatically splits text messages exceeding Telegram's 4096 character limit into multiple consecutive messages. This ensures long messages are delivered without error.
+
+**Response Fields:**
+- `message_id` (int): The ID of the first message sent (for backward compatibility)
+- `message_ids` (List[int] | null): List of all message IDs when the message is split; `null` when not split
+- `split` (bool): `true` if the message was split into multiple parts, `false` otherwise
+- `success` (bool): `true` if the operation succeeded
+- `error` (str | null): Error message if the operation failed
+
+**Example: Sending a long message (> 4096 characters)**
+```bash
+curl -X POST http://localhost:8000/api/v1/production/send_message \
+  -H "Content-Type: application/json" \
+  -d '{"chat_id": 123456789, "text": "This is a very long message..."}'
+```
+
+**Response (split):**
+```json
+{
+  "success": true,
+  "message_id": 3,
+  "message_ids": [3, 4],
+  "split": true,
+  "error": null
+}
+```
+
+**Response (not split):**
+```json
+{
+  "success": true,
+  "message_id": 5,
+  "message_ids": null,
+  "split": false,
+  "error": null
+}
 ```
 
 ## Configuration

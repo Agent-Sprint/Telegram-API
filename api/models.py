@@ -133,8 +133,31 @@ class EditMessageRequest(BaseModel):
 
 
 class MessageResponse(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "success": True,
+                    "message_id": 123,
+                    "split": False,
+                    "message_ids": None,
+                    "error": None,
+                },
+                {
+                    "success": True,
+                    "message_id": None,
+                    "split": True,
+                    "message_ids": [123, 124, 125],
+                    "error": None,
+                },
+            ]
+        }
+    )
+
     success: bool
     message_id: Optional[int] = None
+    split: bool = False
+    message_ids: Optional[List[int]] = None
     error: Optional[str] = None
 
 

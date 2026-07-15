@@ -27,7 +27,7 @@ api/
 │       │   - app: FastAPI
 │       └── Output:
 │           - None
-├── models.py [*]
+├── models.py [x]
 │   ├── class SendMessageRequest [x]
 │   │   ├── Functionality:
 │   │   │   - Pydantic model for send_message endpoint
@@ -95,9 +95,12 @@ api/
 │   ├── class MessageResponse [x]
 │   │   ├── Functionality:
 │   │   │   - Pydantic model for message operation responses
+│   │   │   - Add split flag and message_ids list for split messages
 │   │   ├── Input:
 │   │   │   - success: bool
 │   │   │   - message_id: Optional[int] = None
+│   │   │   - message_ids: Optional[List[int]] = None
+│   │   │   - split: bool = False
 │   │   │   - error: Optional[str] = None
 │   │   └── Output:
 │   │       - Validated Pydantic model instance
@@ -119,7 +122,7 @@ api/
 │       │   - error: Optional[str] = None
 │       └── Output:
 │           - Validated Pydantic model instance
-├── router.py [*]
+├── router.py [x]
 │   ├── function create_router() [x]
 │   │   ├── Functionality:
 │   │   │   - Create an APIRouter with endpoints backed by the given TelegramClient
@@ -130,6 +133,7 @@ api/
 │   ├── function send_message() [x]
 │   │   ├── Functionality:
 │   │   │   - Send message endpoint
+│   │   │   - Return split flag and message_ids when message is split
 │   │   ├── Input:
 │   │   │   - request: SendMessageRequest
 │   │   └── Output:
@@ -197,7 +201,8 @@ telegram_api/
 │   └── Functionality:
 │       - Export TelegramClient from utils
 │       - Define __all__ for package exports
-├── utils.py [*]
+├── utils.py [x]
+│   ├── function _split_text_safely() [x]
 │   ├── function transcribe_voice() [*]
 │   │   ├── Functionality:
 │   │   │   - Async helper to transcribe voice messages using OpenAI Whisper
@@ -230,12 +235,13 @@ telegram_api/
 │       │   │   - Send text message to chat_id
 │       │   │   - Forward extra kwargs to Bot.send_message
 │       │   │   - Validate text is not empty
+│       │   │   - Split text exceeding 4096 chars and return split metadata
 │       │   ├── Input:
 │       │   │   - chat_id: int
 │       │   │   - text: str
 │       │   │   - **kwargs: Any
 │       │   └── Output:
-│       │       - Message object from Telegram API
+│       │       - Message object or dict with message_id, message_ids, split on success
 │       │       - Raises ValueError if text is empty
 │       │       - Raises TelegramError on API failure
 │       ├── method send_reply_keyboard() [x]
@@ -358,66 +364,33 @@ telegram_api/
     └── Output:
         - Markdown documentation file
 tests/
-├── __init__.py [ ]
-└── test_api.py [ ]
-    ├── function test_health_check() [ ]
-    │   ├── Functionality:
-    │   │   - Test health check endpoint returns 200
-    │   │   - Mock TelegramClient
-    │   ├── Input:
-    │   │   - None
-    │   └── Output:
-    │       - None (assertion-based test)
-    ├── function test_send_message() [ ]
-    │   ├── Functionality:
-    │   │   - Test send_message endpoint with valid payload
-    │   │   - Test with invalid payload (empty text)
-    │   │   - Mock TelegramClient.send_message
-    │   ├── Input:
-    │   │   - None
-    │   └── Output:
-    │       - None (assertion-based test)
-    ├── function test_send_reply_keyboard() [ ]
-    │   ├── Functionality:
-    │   │   - Test send_reply_keyboard endpoint with valid payload
-    │   │   - Test with invalid payload (empty keyboard)
-    │   │   - Mock TelegramClient.send_reply_keyboard
-    │   ├── Input:
-    │   │   - None
-    │   └── Output:
-    │       - None (assertion-based test)
-    ├── function test_remove_reply_keyboard() [ ]
-    │   ├── Functionality:
-    │   │   - Test remove_reply_keyboard endpoint with valid payload
-    │   │   - Mock TelegramClient.remove_reply_keyboard
-    │   ├── Input:
-    │   │   - None
-    │   └── Output:
-    │       - None (assertion-based test)
-    ├── function test_get_updates() [ ]
-    │   ├── Functionality:
-    │   │   - Test get_updates endpoint with valid payload
-    │   │   - Mock TelegramClient.get_updates
-    │   ├── Input:
-    │   │   - None
-    │   └── Output:
-    │       - None (assertion-based test)
-    ├── function test_get_chat_ids() [ ]
-    │   ├── Functionality:
-    │   │   - Test get_chat_ids endpoint with valid payload
-    │   │   - Mock TelegramClient.get_updates
-    │   ├── Input:
-    │   │   - None
-    │   └── Output:
-    │       - None (assertion-based test)
-    └── function test_error_handling() [ ]
-        ├── Functionality:
-        │   - Test error handling for TelegramError exceptions
-        │   - Mock TelegramClient to raise TelegramError
-        ├── Input:
-        │   - None
-        └── Output:
-            - None (assertion-based test)
+├── __init__.py [x]
+├── test_api.py [x]
+│   ├── function test_health_check() [x]
+│   ├── function test_send_message() [x]
+│   ├── function test_send_message_long_text_split() [x]
+│   ├── function test_send_message_short_text_not_split() [x]
+│   ├── function test_send_reply_keyboard() [x]
+│   ├── function test_remove_reply_keyboard() [x]
+│   ├── function test_get_updates() [x]
+│   ├── function test_get_chat_ids() [x]
+│   ├── function test_error_handling() [x]
+│   ├── function test_send_file() [x]
+│   ├── function test_send_file_not_found() [x]
+│   ├── function test_send_file_invalid_type() [x]
+│   ├── function test_send_file_document() [x]
+│   ├── function test_send_file_photo() [x]
+│   ├── function test_send_file_video() [x]
+│   └── function test_send_file_audio() [x]
+└── test_utils.py [x]
+    ├── function test_split_text_safely_under_limit() [x]
+    ├── function test_split_text_safely_over_limit() [x]
+    ├── function test_split_text_safely_at_limit() [x]
+    ├── function test_split_text_safely_no_safe_boundary() [x]
+    ├── function test_telegram_client_send_message_long_text() [x]
+    ├── function test_transcribe_voice_singleton() [ ]
+    ├── function test_transcribe_voice_cpu_device() [ ]
+    └── function test_transcribe_voice_model_from_env() [ ]
 .dockerignore [*]
 ├── Functionality:
 │   - Optionally exclude uploads folder contents from Docker image

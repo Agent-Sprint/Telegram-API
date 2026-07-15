@@ -45,11 +45,25 @@ def create_router(bot_manager: BotManager) -> APIRouter:
                 text=request.text,
                 **(request.kwargs or {}),
             )
-            return {
-                "success": True,
-                "message_id": getattr(message, "message_id", None),
-                "error": None,
-            }
+            # Handle new return format: Message object (non-split) or dict (split)
+            if isinstance(message, dict):
+                # Split case
+                return {
+                    "success": True,
+                    "message_id": message["message_id"],
+                    "split": True,
+                    "message_ids": message["message_ids"],
+                    "error": None,
+                }
+            else:
+                # Non-split case (Message object)
+                return {
+                    "success": True,
+                    "message_id": message.message_id,
+                    "split": False,
+                    "message_ids": None,
+                    "error": None,
+                }
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except TelegramError as exc:

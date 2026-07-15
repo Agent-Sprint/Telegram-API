@@ -20,11 +20,49 @@ import whisper
 
 logger = logging.getLogger(__name__)
 
+TELEGRAM_MESSAGE_LIMIT = 4096
+
 # Load the Whisper model once at module level (singleton).
 # Device is hardcoded to CPU — GPU is never used in this service.
 _whisper_model_name = os.getenv("WHISPER_MODEL", "base")
 logger.info("Loading Whisper model '%s' on cpu", _whisper_model_name)
 _whisper_model = whisper.load_model(_whisper_model_name, device="cpu")
+
+
+def _split_text_safely(text: str, limit: int = 4096) -> List[str]:
+    if len(text) <= limit:
+        return [text]
+    
+    chunks = []
+    start = 0
+    
+    while start < len(text):
+        end = start + limit
+        
+        if end >= len(text):
+            chunks.append(text[start:])
+            break
+        
+        # Prefer splitting at newline
+        newline_pos = text.rfind('\n', start, end)
+        if newline_pos > start:
+            chunks.append(text[start:newline_pos])
+            start = newline_pos + 1
+            continue
+        
+        # Prefer splitting at space
+        space_pos = text.rfind(' ', start, end)
+        if space_pos > start:
+            chunks.append(text[start:space_pos])
+            start = space_pos + 1
+            continue
+        
+        # Split at limit if no safe boundary
+        chunks.append(text[start:end])
+        start = end
+    
+    # Filter empty chunks
+    return [chunk for chunk in chunks if chunk]
 
 
 async def transcribe_voice(voice: Any, bot: Any) -> str:
@@ -90,6 +128,16 @@ class TelegramClient:
         All extra keyword arguments are forwarded to ``Bot.send_message``.
         Messages are parsed as Markdown by default; pass ``parse_mode`` to
         override (e.g. ``parse_mode="HTML"`` or ``parse_mode=None``).
+
+        If the text exceeds Telegram's message limit (4096 characters), it is
+        automatically split into multiple messages. In this case, a dictionary
+        is returned with the following keys:
+
+        - ``message_id``: the ID of the first message (for backward compatibility)
+        - ``message_ids``: a list of all message IDs
+        - ``split``: ``True`` when the message was split, ``False`` otherwise
+
+        If the message is not split, the original ``Message`` object is returned.
         """
         if not text:
             raise ValueError("Message text cannot be empty.")
@@ -100,9 +148,27 @@ class TelegramClient:
 
         logger.info("Sending message to chat %s", chat_id)
         try:
-            return await self.bot.send_message(
-                chat_id=chat_id, text=text, **send_kwargs
-            )
+            # Check if text needs to be split
+            if len(text) <= TELEGRAM_MESSAGE_LIMIT:
+                # Send single message
+                return await self.bot.send_message(
+                    chat_id=chat_id, text=text, **send_kwargs
+                )
+            else:
+                # Split text and send chunks
+                chunks = _split_text_safely(text, TELEGRAM_MESSAGE_LIMIT)
+                message_ids = []
+                for chunk in chunks:
+                    message = await self.bot.send_message(
+                        chat_id=chat_id, text=chunk, **send_kwargs
+                    )
+                    message_ids.append(message.message_id)
+                
+                return {
+                    "message_id": message_ids[0],
+                    "message_ids": message_ids,
+                    "split": True,
+                }
         except TelegramError as exc:
             logger.error("Failed to send message to chat %s: %s", chat_id, exc)
             raise
