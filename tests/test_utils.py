@@ -14,7 +14,7 @@ so sys.modules is patched with a MagicMock stub before each import.
 import asyncio
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 
@@ -208,15 +208,91 @@ def test_send_file_converts_caption_by_default():
     utils = _reload_utils(_get_whisper_stub())
     client = _make_client(utils)
 
-    asyncio.run(
-        client.send_file(
-            chat_id=1,
-            filename="test.txt",
-            file_type="document",
-            caption="**bold** _italic_",
+    with patch("telegram_api.utils.os.path.exists", return_value=True), \
+         patch("telegram_api.utils.open", mock_open(read_data=b"file content")):
+        asyncio.run(
+            client.send_file(
+                chat_id=1,
+                filename="test.txt",
+                file_type="document",
+                caption="**bold** _italic_",
+            )
         )
-    )
 
     call_kwargs = client.bot.send_document.call_args.kwargs
     assert call_kwargs["caption"] == "*bold* _italic_"
     assert call_kwargs["parse_mode"] == "MarkdownV2"
+
+
+# ============================================================================
+# Tests for _split_text_safely
+# ============================================================================
+
+def test_split_text_safely_under_limit():
+    """Text under limit returns single chunk."""
+    utils = _reload_utils(_get_whisper_stub())
+    text = "Hello, world!"
+    result = utils._split_text_safely(text, limit=100)
+    assert result == [text]
+    assert len(result) == 1
+
+
+def test_split_text_safely_over_limit():
+    """Text over limit is split into multiple chunks, each <= limit."""
+    utils = _reload_utils(_get_whisper_stub())
+    text = "Line one\nLine two\nLine three\nLine four\nLine five"
+    limit = 20
+    result = utils._split_text_safely(text, limit=limit)
+    assert len(result) > 1
+    for chunk in result:
+        assert len(chunk) <= limit
+
+
+def test_split_text_safely_at_limit():
+    """Text exactly at limit returns single chunk."""
+    utils = _reload_utils(_get_whisper_stub())
+    text = "a" * 100
+    limit = 100
+    result = utils._split_text_safely(text, limit=limit)
+    assert result == [text]
+    assert len(result) == 1
+
+
+def test_split_text_safely_no_safe_boundary():
+    """Text with no safe boundaries (no newlines or spaces within limit) splits at the limit."""
+    utils = _reload_utils(_get_whisper_stub())
+    text = "a" * 150
+    limit = 50
+    result = utils._split_text_safely(text, limit=limit)
+    assert len(result) == 3
+    for chunk in result:
+        assert len(chunk) <= limit
+
+
+def test_telegram_client_send_message_long_text():
+    """Test that TelegramClient.send_message splits long text and returns dict with split info."""
+    utils = _reload_utils(_get_whisper_stub())
+    client = utils.TelegramClient(token="fake-token")
+    client.bot = AsyncMock()
+
+    # Configure send_message to return different message_id values for each call
+    client.bot.send_message.side_effect = [
+        AsyncMock(message_id=1),
+        AsyncMock(message_id=2),
+        AsyncMock(message_id=3),
+    ]
+
+    async def _run():
+        result = await client.send_message(chat_id=1, text="a" * 10000)
+        return result
+
+    result = asyncio.run(_run())
+
+    # Assert result is a dict with split information
+    assert isinstance(result, dict)
+    assert result["split"] is True
+    assert result["message_ids"] == [1, 2, 3]
+    assert result["message_id"] == 1
+
+    # Assert send_message was called 3 times (for 3 chunks)
+    assert client.bot.send_message.call_count == 3

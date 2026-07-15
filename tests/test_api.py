@@ -93,6 +93,67 @@ def test_send_message_uses_markdown_v2_by_default():
     assert call_kwargs["parse_mode"] == "MarkdownV2"
 
 
+def test_send_message_long_text_split():
+    """Test that long text (>4096 chars) is split into multiple messages."""
+    # Configure mock to return different message_id values for each call
+    _bot_instance.send_message.reset_mock()
+    _bot_instance.send_message.side_effect = [
+        AsyncMock(message_id=1),
+        AsyncMock(message_id=2),
+        AsyncMock(message_id=3),
+    ]
+
+    # Send text longer than 4096 characters
+    long_text = "a" * 5000
+    response = client.post(
+        "/api/v1/test/send_message",
+        json={"chat_id": 123456789, "text": long_text},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["split"] is True
+    assert data["message_ids"] is not None
+    assert len(data["message_ids"]) >= 2
+    assert data["message_id"] == data["message_ids"][0]
+    assert data["error"] is None
+
+    # Verify send_message was called multiple times
+    assert _bot_instance.send_message.call_count >= 2
+
+    # Reset the mock to default behavior for other tests
+    _bot_instance.send_message.reset_mock()
+    _bot_instance.send_message.side_effect = None
+    _bot_instance.send_message.return_value = AsyncMock(message_id=42)
+
+
+def test_send_message_short_text_not_split():
+    """Test that short text is not split and returns single message_id."""
+    _bot_instance.send_message.reset_mock()
+    _bot_instance.send_message.side_effect = None
+    _bot_instance.send_message.return_value = AsyncMock(message_id=42)
+
+    response = client.post(
+        "/api/v1/test/send_message",
+        json={"chat_id": 123456789, "text": "Hello!"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["split"] is False
+    assert data["message_ids"] is None
+    assert data["message_id"] == 42
+    assert data["error"] is None
+
+    # Verify send_message was called only once
+    _bot_instance.send_message.assert_awaited_once()
+
+    # Reset the mock to default behavior for other tests
+    _bot_instance.send_message.reset_mock()
+    _bot_instance.send_message.return_value = AsyncMock(message_id=42)
+
+
 def test_send_message_allows_parse_mode_override():
     """Callers can override the default MarkdownV2 parse_mode via kwargs."""
     _bot_instance.send_message.reset_mock()
